@@ -1,0 +1,20 @@
+command:
+  - uv
+  - run
+  - python
+  - ${program}
+  - ${args}
+program: train_sweep.py
+method: grid
+metric:
+  name: image_collapse
+  goal: minimize
+parameters:
+  lr:
+    values: [1e-5, 1e-4]
+  batch_size:
+    values: [16, 32]
+  warmup_epochs:
+    values: [0, 2]
+  grad_clip:
+    values: [0.0, 1.0]

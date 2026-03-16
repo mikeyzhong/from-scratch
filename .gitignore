@@ -1,0 +1,22 @@
+# Python-generated files
+**/__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+**/.venv/
+
+# Notebook and app state
+**/.ipynb_checkpoints/
+**/__marimo__/
+.claude/
+
+# Experiment logs
+**/wandb/
+
+# Project-local artifacts
+clip/data/
+clip/*.pt
