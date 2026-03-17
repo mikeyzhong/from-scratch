@@ -20,3 +20,4 @@ wheels/
 # Project-local artifacts
 clip/data/
 clip/*.pt
+scaled-clip/PLAN.md
