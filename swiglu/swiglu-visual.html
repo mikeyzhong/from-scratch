@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SwiGLU — Gating Intuition</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 { font-size: 1.4rem; color: #e6edf3; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; color: #e6edf3; margin-bottom: 12px; font-weight: 600; }
+  h3 { font-size: 0.85rem; color: #8b949e; font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .subtitle { color: #8b949e; font-size: 0.9rem; margin-bottom: 24px; }
+
+  .top-controls {
+    display: flex; gap: 12px; margin-bottom: 24px; align-items: center; flex-wrap: wrap;
+  }
+  button {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
+    transition: background 0.15s;
+  }
+  button:hover { background: #30363d; }
+  button.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  @media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .panel-header h2 { margin-bottom: 0; }
+  .badge {
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-swiglu { background: #1a3a2a; color: #3fb950; }
+  .badge-standard { background: #2a2a1a; color: #d29922; }
+
+  .input-section { margin-bottom: 20px; }
+  .slider-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+  }
+  .slider-label {
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem;
+    color: #8b949e; width: 20px; text-align: right;
+  }
+  .slider-val {
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem;
+    color: #e6edf3; width: 44px; text-align: right;
+  }
+  input[type="range"] {
+    flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+    background: #30363d; border-radius: 2px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: #58a6ff; cursor: pointer;
+  }
+
+  .flow-section { position: relative; }
+
+  .stage {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #0d1117;
+    border: 1px solid #21262d;
+  }
+  .stage-label {
+    font-size: 0.72rem; color: #8b949e; margin-bottom: 8px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .bars {
+    display: flex; gap: 6px; align-items: flex-end; height: 60px;
+    padding-bottom: 2px;
+  }
+  .bar-col {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  .bar {
+    width: 100%; border-radius: 3px 3px 0 0; transition: height 0.3s, opacity 0.3s, background 0.3s;
+    min-height: 1px; position: relative;
+  }
+  .bar-value {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.65rem; color: #8b949e; text-align: center;
+  }
+
+  .arrow-down {
+    text-align: center; color: #30363d; font-size: 1.2rem; margin: 4px 0;
+    letter-spacing: 8px;
+  }
+  .arrow-split {
+    display: flex; justify-content: center; gap: 40px;
+    color: #30363d; font-size: 1.2rem; margin: 4px 0;
+  }
+
+  .parallel {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 4px;
+  }
+  .parallel .stage { margin-bottom: 0; }
+
+  .gate-bar { background: #1f6feb; }
+  .value-bar { background: #d29922; }
+  .result-bar { background: #3fb950; }
+  .input-bar { background: #8b949e; }
+  .gelu-bar { background: #d29922; }
+  .output-bar { background: #bc8cff; }
+
+  .multiply-symbol {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; color: #484f58; font-weight: bold;
+  }
+
+  .formula {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.75rem; color: #484f58; text-align: center;
+    margin: 8px 0 4px;
+  }
+
+  .insight-box {
+    background: #0d1117;
+    border: 1px solid #1f6feb33;
+    border-left: 3px solid #1f6feb;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 16px;
+    font-size: 0.82rem;
+    color: #8b949e;
+    line-height: 1.5;
+  }
+  .insight-box strong { color: #c9d1d9; }
+
+  .suppressed { opacity: 0.2; }
+</style>
+</head>
+<body>
+
+<h1>SwiGLU — The Gating Intuition</h1>
+<p class="subtitle">How learned gating decides which features survive</p>
+
+<div class="top-controls">
+  <h3 style="margin:0; text-transform:none; letter-spacing:0">Input vector:</h3>
+  <div id="sliders" style="display:flex; gap:16px; flex-wrap:wrap;"></div>
+  <button onclick="randomizeInputs()">Randomize inputs</button>
+  <button onclick="randomizeWeights()">Randomize weights</button>
+</div>
+
+<div class="main-layout">
+  <!-- SwiGLU Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>SwiGLU FFN</h2>
+      <span class="badge badge-swiglu">Gated</span>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label">Input x</div>
+      <div class="bars" id="swiglu-input"></div>
+    </div>
+
+    <div class="arrow-split"><span>↓</span><span>↓</span></div>
+
+    <div class="parallel">
+      <div class="stage" style="border-color:#1f6feb44">
+        <div class="stage-label" style="color:#58a6ff">Gate path → Swish</div>
+        <div class="formula">swish(x·W<sub>gate</sub>)</div>
+        <div class="bars" id="swiglu-gate"></div>
+      </div>
+      <div class="stage" style="border-color:#d2992244">
+        <div class="stage-label" style="color:#d29922">Value path</div>
+        <div class="formula">x·W<sub>up</sub></div>
+        <div class="bars" id="swiglu-value"></div>
+      </div>
+    </div>
+
+    <div class="formula" style="font-size:1.1rem; margin: 8px 0;">⊙</div>
+
+    <div class="stage" style="border-color:#3fb95044">
+      <div class="stage-label" style="color:#3fb950">Gate × Value</div>
+      <div class="bars" id="swiglu-product"></div>
+    </div>
+
+    <div class="arrow-down">↓</div>
+
+    <div class="stage" style="border-color:#bc8cff44">
+      <div class="stage-label" style="color:#bc8cff">Output (× W<sub>down</sub>)</div>
+      <div class="bars" id="swiglu-output"></div>
+    </div>
+  </div>
+
+  <!-- Standard FFN Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Standard FFN</h2>
+      <span class="badge badge-standard">No Gate</span>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label">Input x</div>
+      <div class="bars" id="std-input"></div>
+    </div>
+
+    <div class="arrow-down">↓</div>
+
+    <div class="stage">
+      <div class="stage-label">x · W<sub>up</sub></div>
+      <div class="bars" id="std-up"></div>
+    </div>
+
+    <div class="arrow-down">↓</div>
+
+    <div class="stage" style="border-color:#d2992244">
+      <div class="stage-label" style="color:#d29922">GELU activation</div>
+      <div class="formula">0.5x(1 + erf(x/√2))</div>
+      <div class="bars" id="std-gelu"></div>
+    </div>
+
+    <div class="arrow-down">↓</div>
+
+    <div class="stage" style="border-color:#bc8cff44">
+      <div class="stage-label" style="color:#bc8cff">Output (× W<sub>down</sub>)</div>
+      <div class="bars" id="std-output"></div>
+    </div>
+  </div>
+</div>
+
+<div class="insight-box" id="insight">
+  Adjust the input sliders or randomize weights to see how SwiGLU's <strong>two independent paths</strong> create selective gating, while the standard FFN applies the same fixed activation to every feature.
+</div>
+
+<script>
+const DIM = 4;
+const HIDDEN = 6;
+
+let inputs = [1.2, -0.8, 0.5, -1.5];
+
+// Weight matrices (small random values)
+let W_gate, W_up, W_down_swi, W_up_std, W_down_std;
+
+function initWeights() {
+  W_gate = randomMatrix(DIM, HIDDEN);
+  W_up = randomMatrix(DIM, HIDDEN);
+  W_down_swi = randomMatrix(HIDDEN, DIM);
+  W_up_std = randomMatrix(DIM, HIDDEN);
+  W_down_std = randomMatrix(HIDDEN, DIM);
+}
+
+function randomMatrix(rows, cols) {
+  const m = [];
+  for (let i = 0; i < rows; i++) {
+    m[i] = [];
+    for (let j = 0; j < cols; j++) {
+      m[i][j] = (Math.random() - 0.5) * 1.5;
+    }
+  }
+  return m;
+}
+
+function matmul(vec, mat) {
+  const out = new Array(mat[0].length).fill(0);
+  for (let j = 0; j < mat[0].length; j++) {
+    for (let i = 0; i < vec.length; i++) {
+      out[j] += vec[i] * mat[i][j];
+    }
+  }
+  return out;
+}
+
+function swish(x) { return x.map(v => v * sigmoid(v)); }
+function sigmoid(v) { return 1 / (1 + Math.exp(-v)); }
+function gelu(x) { return x.map(v => 0.5 * v * (1 + erf(v / Math.sqrt(2)))); }
+function erf(x) {
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t * Math.exp(-x*x);
+  return sign * y;
+}
+function elementMul(a, b) { return a.map((v, i) => v * b[i]); }
+
+// --- Rendering ---
+function renderBars(containerId, values, colorClass, showOpacity) {
+  const el = document.getElementById(containerId);
+  const maxAbs = Math.max(...values.map(Math.abs), 0.01);
+
+  el.innerHTML = values.map((v, i) => {
+    const h = Math.abs(v) / maxAbs * 50;
+    const opacity = showOpacity !== undefined ? showOpacity[i] : 1;
+    const dim = opacity < 0.3;
+    return `<div class="bar-col">
+      <div class="bar-value">${v.toFixed(2)}</div>
+      <div class="bar ${colorClass} ${dim ? 'suppressed' : ''}"
+           style="height:${Math.max(h, 2)}px; opacity:${Math.max(opacity, 0.15)};
+                  ${v < 0 ? 'border-radius:0 0 3px 3px; align-self:flex-start;' : ''}">
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildSliders() {
+  const container = document.getElementById('sliders');
+  container.innerHTML = inputs.map((v, i) =>
+    `<div class="slider-row">
+      <span class="slider-label">x<sub>${i}</sub></span>
+      <input type="range" min="-3" max="3" step="0.1" value="${v}"
+             oninput="inputs[${i}]=parseFloat(this.value); update()">
+      <span class="slider-val" id="sv${i}">${v.toFixed(1)}</span>
+    </div>`
+  ).join('');
+}
+
+function update() {
+  // Update slider displays
+  inputs.forEach((v, i) => {
+    const el = document.getElementById(`sv${i}`);
+    if (el) el.textContent = v.toFixed(1);
+  });
+
+  // --- SwiGLU path ---
+  const gateRaw = matmul(inputs, W_gate);
+  const gateAct = swish(gateRaw);
+  const valueRaw = matmul(inputs, W_up);
+  const product = elementMul(gateAct, valueRaw);
+  const swigluOut = matmul(product, W_down_swi);
+
+  // Normalize gate activations to [0,1] range for opacity
+  const gateMax = Math.max(...gateAct.map(Math.abs), 0.01);
+  const gateOpacity = gateAct.map(v => Math.max(Math.abs(v) / gateMax, 0.08));
+
+  renderBars('swiglu-input', inputs, 'input-bar');
+  renderBars('swiglu-gate', gateAct, 'gate-bar');
+  renderBars('swiglu-value', valueRaw, 'value-bar');
+  renderBars('swiglu-product', product, 'result-bar', gateOpacity);
+  renderBars('swiglu-output', swigluOut, 'output-bar');
+
+  // --- Standard FFN path ---
+  const stdUp = matmul(inputs, W_up_std);
+  const stdAct = gelu(stdUp);
+  const stdOut = matmul(stdAct, W_down_std);
+
+  renderBars('std-input', inputs, 'input-bar');
+  renderBars('std-up', stdUp, 'input-bar');
+  renderBars('std-gelu', stdAct, 'gelu-bar');
+  renderBars('std-output', stdOut, 'output-bar');
+
+  // --- Insight ---
+  const suppressed = gateAct.filter((v, i) => Math.abs(v) < 0.3 && Math.abs(valueRaw[i]) > 0.5).length;
+  const passed = gateAct.filter(v => Math.abs(v) > 0.7).length;
+  const insightEl = document.getElementById('insight');
+
+  if (suppressed > 0) {
+    insightEl.innerHTML = `<strong>${suppressed} of ${HIDDEN} features suppressed</strong> by the gate — the network learned these aren't useful for this input. The value path computed them, but the gate said "no." In a standard FFN, GELU can only suppress based on each value's own magnitude, not on learned cross-feature decisions.`;
+  } else if (passed === HIDDEN) {
+    insightEl.innerHTML = `All features passing through the gate. Try <strong>randomizing weights</strong> to see selective suppression — the power of SwiGLU is that it can learn to shut off specific features independently of their magnitude.`;
+  } else {
+    insightEl.innerHTML = `The gate is <strong>selectively scaling</strong> each feature. Notice how the gate values (blue) are independent of the value magnitudes (orange) — this is the key difference from GELU, where activation strength is tied directly to input magnitude.`;
+  }
+}
+
+function randomizeInputs() {
+  inputs = inputs.map(() => Math.round((Math.random() * 6 - 3) * 10) / 10);
+  buildSliders();
+  update();
+}
+
+function randomizeWeights() {
+  initWeights();
+  update();
+}
+
+// Init
+initWeights();
+buildSliders();
+update();
+</script>
+</body>
+</html>
