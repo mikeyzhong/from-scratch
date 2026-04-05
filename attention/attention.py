@@ -1,7 +1,17 @@
 import math
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
+
+for site_packages in ROOT.glob("clip/.venv/lib/python*/site-packages"):
+    sys.path.append(str(site_packages))
 
 import torch
 import torch.nn as nn
+
+from position_embedding.position_embedding import RotaryPositionEmbedding
 
 
 # Step 1: Q, K, V projections
@@ -24,9 +34,104 @@ class QKVProjection(nn.Module):
 # Step 2: Scaled dot-product attention
 # For every token, compute how much it should attend to every other token,
 # then return a weighted sum of their values.
-def scaled_dot_product_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+def scaled_dot_product_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    causal: bool = False,
+) -> torch.Tensor:
     # q, k, v: (batch, seq_len, dim)
     d_k = q.size(-1)
     scores = q @ k.transpose(-2, -1) / math.sqrt(d_k)  # (batch, seq_len, seq_len)
+
+    if causal:
+        seq_len = q.size(-2)
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device, dtype=torch.bool), diagonal=1)
+        scores = scores.masked_fill(mask, float("-inf"))
+
     weights = torch.softmax(scores, dim=-1)
     return weights @ v  # (batch, seq_len, dim)
+
+
+# Step 3: Single-head attention with optional RoPE
+class SingleHeadAttention(nn.Module):
+    def __init__(self, dim: int, max_seq_len: int = 2048, use_rope: bool = False):
+        super().__init__()
+        self.qkv = QKVProjection(dim)
+        self.rope = RotaryPositionEmbedding(max_seq_len=max_seq_len, dim=dim) if use_rope else None
+
+    def forward(self, x: torch.Tensor, causal: bool = False) -> torch.Tensor:
+        q, k, v = self.qkv(x)
+
+        if self.rope is not None:
+            q, k = self.rope(q, k)
+
+        return scaled_dot_product_attention(q, k, v, causal=causal)
+
+
+# Step 4: Multi-head attention
+# Split the model dimension across multiple heads, run attention in parallel,
+# then merge the head outputs back together with a final projection.
+class MultiHeadAttention(nn.Module):
+    def __init__(self, dim: int, num_heads: int, max_seq_len: int = 2048, use_rope: bool = False):
+        super().__init__()
+        if dim % num_heads != 0:
+            raise ValueError("dim must be divisible by num_heads")
+
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+
+        self.qkv = QKVProjection(dim)
+        self.rope = RotaryPositionEmbedding(max_seq_len=max_seq_len, dim=self.head_dim) if use_rope else None
+        self.out_proj = nn.Linear(dim, dim, bias=False)
+
+    def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len, _ = x.shape
+        x = x.view(batch_size, seq_len, self.num_heads, self.head_dim)
+        return x.transpose(1, 2)
+
+    def _merge_heads(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, seq_len, _ = x.shape
+        x = x.transpose(1, 2).contiguous()
+        return x.view(batch_size, seq_len, self.dim)
+
+    def forward(self, x: torch.Tensor, causal: bool = False) -> torch.Tensor:
+        q, k, v = self.qkv(x)
+
+        q = self._split_heads(q)
+        k = self._split_heads(k)
+        v = self._split_heads(v)
+
+        if self.rope is not None:
+            q, k = self.rope(q, k)
+
+        out = scaled_dot_product_attention(q, k, v, causal=causal)
+        out = self._merge_heads(out)
+        return self.out_proj(out)
+
+
+def toy_multihead_attention_example() -> None:
+    x = torch.tensor(
+        [
+            [
+                [1.0, 0.0, 0.5, 0.0],
+                [0.0, 1.0, 0.0, 0.5],
+                [1.0, 1.0, 0.5, 0.5],
+            ]
+        ]
+    )  # (batch=1, seq=3, dim=4)
+
+    attn = MultiHeadAttention(dim=4, num_heads=2, max_seq_len=8, use_rope=True)
+    y = attn(x, causal=True)
+
+    print("input shape:", x.shape)
+    print("num_heads:", attn.num_heads)
+    print("head_dim:", attn.head_dim)
+    print("q split shape:", attn._split_heads(attn.qkv(x)[0]).shape)
+    print("output shape:", y.shape)
+    print("output:", y)
+
+
+if __name__ == "__main__":
+    toy_multihead_attention_example()
