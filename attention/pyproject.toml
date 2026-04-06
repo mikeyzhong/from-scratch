@@ -1,0 +1,9 @@
+[project]
+name = "attention"
+version = "0.1.0"
+description = "Attention from scratch"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.3.0",
+    "torch>=2.10.0",
+]
