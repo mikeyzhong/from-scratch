@@ -10,6 +10,20 @@ sys.path.append(str(ROOT))
 from attention.attention import MultiHeadAttention
 
 
+class LayerNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+        self.gamma = nn.Parameter(torch.ones(dim))
+        self.beta = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        x_hat = (x - mean) / torch.sqrt(var + self.eps)
+        return self.gamma * x_hat + self.beta
+
+
 class FeedForward(nn.Module):
     def __init__(self, dim: int, hidden_dim: int | None = None):
         super().__init__()
@@ -25,14 +39,14 @@ class FeedForward(nn.Module):
 class TransformerBlock(nn.Module):
     def __init__(self, dim: int, num_heads: int, max_seq_len: int = 2048, use_rope: bool = True):
         super().__init__()
-        self.ln1 = nn.LayerNorm(dim)
+        self.ln1 = LayerNorm(dim)
         self.attn = MultiHeadAttention(
             dim=dim,
             num_heads=num_heads,
             max_seq_len=max_seq_len,
             use_rope=use_rope,
         )
-        self.ln2 = nn.LayerNorm(dim)
+        self.ln2 = LayerNorm(dim)
         self.ffn = FeedForward(dim)
 
     def forward(self, x: torch.Tensor, causal: bool = False) -> torch.Tensor:
