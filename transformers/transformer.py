@@ -66,6 +66,7 @@ class Transformer(nn.Module):
         use_rope: bool = True,
     ):
         super().__init__()
+        self.vocab_size = vocab_size
         self.token_embed = nn.Embedding(vocab_size, dim)
         self.blocks = nn.ModuleList(
             [
@@ -92,11 +93,11 @@ class Transformer(nn.Module):
 
 
 def main() -> None:
-    tokens = torch.randint(0, 32, (2, 5))
     model = Transformer(vocab_size=32, dim=8, num_heads=2, depth=2, max_seq_len=16, use_rope=True)
+    tokens = torch.randint(0, model.vocab_size, (2, 5))
     logits = model(tokens, causal=True)
 
-    assert logits.shape == (2, 5, 32)
+    assert logits.shape == (2, 5, model.vocab_size)
 
     print("transformer scaffold ready")
     print("token input shape:", tokens.shape)
