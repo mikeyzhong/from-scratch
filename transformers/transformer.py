@@ -55,14 +55,52 @@ class TransformerBlock(nn.Module):
         return x
 
 
+class Transformer(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        dim: int,
+        num_heads: int,
+        depth: int,
+        max_seq_len: int = 2048,
+        use_rope: bool = True,
+    ):
+        super().__init__()
+        self.token_embed = nn.Embedding(vocab_size, dim)
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    dim=dim,
+                    num_heads=num_heads,
+                    max_seq_len=max_seq_len,
+                    use_rope=use_rope,
+                )
+                for _ in range(depth)
+            ]
+        )
+        self.ln_f = LayerNorm(dim)
+        self.lm_head = nn.Linear(dim, vocab_size, bias=False)
+
+    def forward(self, tokens: torch.Tensor, causal: bool = True) -> torch.Tensor:
+        x = self.token_embed(tokens)
+
+        for block in self.blocks:
+            x = block(x, causal=causal)
+
+        x = self.ln_f(x)
+        return self.lm_head(x)
+
+
 def main() -> None:
-    x = torch.randn(2, 5, 8)
-    block = TransformerBlock(dim=8, num_heads=2, max_seq_len=16, use_rope=True)
-    y = block(x, causal=True)
+    tokens = torch.randint(0, 32, (2, 5))
+    model = Transformer(vocab_size=32, dim=8, num_heads=2, depth=2, max_seq_len=16, use_rope=True)
+    logits = model(tokens, causal=True)
+
+    assert logits.shape == (2, 5, 32)
 
     print("transformer scaffold ready")
-    print("example input shape:", x.shape)
-    print("block output shape:", y.shape)
+    print("token input shape:", tokens.shape)
+    print("logits shape:", logits.shape)
 
 
 if __name__ == "__main__":
