@@ -26,11 +26,12 @@ class TextEncoder(nn.Module):
 
         x = self.token_embed(tokens) + self.pos_embed(positions)
 
-        mask = (tokens == 0)
+        # EOT has the largest token id; padding id 0 is also GPT-2's "!", so mask by position.
+        eot_idx = tokens.argmax(dim=1)
+        mask = positions > eot_idx.unsqueeze(1)
         x = self.transformer(x, src_key_padding_mask=mask)
         x = self.norm(x)
 
-        eot_idx = (~mask).sum(dim=1) - 1
         x = x[torch.arange(batch_size, device=x.device), eot_idx]
 
         x = self.proj(x)
