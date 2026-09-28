@@ -16,8 +16,8 @@ class CLIPTokenizer:
 
         batch = []
         for text in texts:
-            tokens = [self.sot_token] + self.enc.encode(text.lower()) + [self.eot_token]
-            tokens = tokens[:self.max_length]
+            body = self.enc.encode(text.lower())[:self.max_length - 2]
+            tokens = [self.sot_token] + body + [self.eot_token]
             tokens = tokens + [0] * (self.max_length - len(tokens))
             batch.append(tokens)
 
